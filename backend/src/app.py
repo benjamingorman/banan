@@ -21,4 +21,5 @@ async def get_history(server_name: str, response: Response):
     except Exception as e:
         return {"error": str(e)}
 
-    return {"history": history.get("data", [])}
+    data = [node for node in history.get("data", []) if node]
+    return {"history": sorted(data, key=lambda node: node["key"])}
