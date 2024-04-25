@@ -1,10 +1,13 @@
+/** Whether to enable Banan or not. Turn off when not profiling. */
 export const BANAN_ENABLED = true;
 
+/** Options for configuring the profiler. */
 export interface BananOpts {
   maxHistory?: number;
   autoSaveKey?: string;
 }
 
+/** A node in the profiling tree. */
 export interface ProfilingNode {
   key: string;
   start: number;
@@ -13,6 +16,11 @@ export interface ProfilingNode {
   marks?: ProfilingMark[];
 }
 
+/**
+ * A stack frame for the profiler.
+ * These are only ever created temporarily, and will be converted
+ * to ProfilingNodes when the stack frame is popped.
+ * */
 interface StackFrame {
   key: string;
   start: number;
@@ -33,25 +41,40 @@ interface ProfilingMark {
  * A profiler for measuring CPU usage of different parts of the code.
  */
 export class Banan {
+  /** The singleton instance of the profiler */
   private static _instance: Banan;
   public static get instance(): Banan {
     return this._instance || this.reset();
   }
 
+  /** Reset the state of the profiler */
   public static reset(): Banan {
     return (this._instance = new this());
   }
 
+  /** The current tick number */
   private tick?: number;
+
+  /** The root node of the current tick's profiling tree */
   private tickRootNode?: ProfilingNode;
+
+  /** The stack of nodes currently being profiled */
   private stack: StackFrame[] = [];
+
+  /** The key to use for auto-saving the profiler data to Memory */
   private autoSaveKey?: string;
+
+  /** A list of interesting events that we want to highlight */
   private marks: ProfilingMark[] = [];
 
   /** Keep a history of the last N ticks */
   private history: Array<ProfilingNode | undefined> = new Array(30);
 
+  /**
+   * Initialize the profiler with supplied options.
+   */
   public init(opts?: BananOpts): void {
+    if (!BANAN_ENABLED) return;
     this.history = new Array(opts?.maxHistory || 30);
     this.history.fill(undefined);
     Object.seal(this.history);
@@ -61,7 +84,11 @@ export class Banan {
     }
   }
 
+  /**
+   * Should be called at the start of each tick.
+   */
   public startTick(): void {
+    if (!BANAN_ENABLED) return;
     this.tick = Game.time;
     this.stack = [];
     this.marks = [];
@@ -73,7 +100,11 @@ export class Banan {
     };
   }
 
+  /**
+   * Should be called at the end of each tick.
+   */
   public endTick(): void {
+    if (!BANAN_ENABLED) return;
     this.tick = undefined;
     this.tickRootNode!.cpu = Game.cpu.getUsed();
     this.tickRootNode!.marks = this.marks;
@@ -84,8 +115,13 @@ export class Banan {
     }
   }
 
+  /**
+   * Add a mark to the recording, which indicates an important event
+   * in the bot that we want to highlight on the flame graph.
+   */
   public addMark(fullName: string, shortName?: string): void {
-    if (!this.isEnabled()) return;
+    if (!BANAN_ENABLED) return;
+    if (!this.isRecording()) return;
     this.marks.push({
       fullName,
       shortName: shortName || fullName,
@@ -93,15 +129,27 @@ export class Banan {
     });
   }
 
+  /**
+   * Return the profiling node from the current tick.
+   */
   public getCurrentTickDump(): ProfilingNode | undefined {
+    if (!BANAN_ENABLED) return undefined;
     return this.history[this.getHistoryPtr(Game.time)];
   }
 
+  /**
+   * Return the profiling node from the previous tick.
+   */
   public getPrevTickDump(): ProfilingNode | undefined {
+    if (!BANAN_ENABLED) return undefined;
     return this.history[this.getHistoryPtr(Game.time - 1)];
   }
 
+  /**
+   * Return the CPU used in the current tick.
+   */
   public getPrevTickCpuUsed(): number | undefined {
+    if (!BANAN_ENABLED) return undefined;
     return this.getPrevTickDump()?.cpu;
   }
 
@@ -109,6 +157,7 @@ export class Banan {
    * Log information about the current tick to the console.
    */
   public logInfo(): void {
+    if (!BANAN_ENABLED) return;
     const currentDump = this.getCurrentTickDump();
     if (currentDump) {
       console.log("🍌 Current tick CPU usage:", currentDump.cpu);
@@ -117,7 +166,11 @@ export class Banan {
     }
   }
 
+  /**
+   * Return the average CPU used over the last N ticks.
+   */
   public getAverageCpuUsed(): number {
+    if (!BANAN_ENABLED) return 0;
     let count = 0;
     const total = this.history.reduce((acc, node) => {
       if (node) {
@@ -129,8 +182,25 @@ export class Banan {
     return total / count;
   }
 
+  /**
+   * Write the current profiling history to memory.
+   */
   public saveToMemory(key: string): void {
     (Memory as any)[key] = this.history;
+  }
+
+  /**
+   * Get a pointer to the history array for the given tick.
+   */
+  private getHistoryPtr(targetTick?: number): number {
+    return (targetTick ?? Game.time) % this.history.length;
+  }
+
+  /**
+   * Are we currently in the middle of a tick and recording?
+   */
+  private isRecording(): boolean {
+    return Game.time === this.tick;
   }
 
   /**
@@ -141,11 +211,6 @@ export class Banan {
     key?: string | symbol,
     _descriptor?: TypedPropertyDescriptor<Function>,
   ): void {
-    if (!BANAN_ENABLED) {
-      // console.log("Banan is not active");
-      return;
-    }
-
     if (key) {
       // case of method decorator
       this.wrapFunction(target, key);
@@ -172,20 +237,14 @@ export class Banan {
     });
   }
 
-  private getHistoryPtr(targetTick?: number): number {
-    return (targetTick ?? Game.time) % this.history.length;
-  }
-
-  private isEnabled(): boolean {
-    return Game.time === this.tick;
-  }
-
+  /**
+   * Wrap a function with profiling code.
+   */
   private wrapFunction(
     obj: object,
     key: PropertyKey,
     className?: string,
   ): void {
-    // console.log("WRAP", obj, key);
     const descriptor = Reflect.getOwnPropertyDescriptor(obj, key);
     if (!descriptor || descriptor.get || descriptor.set) {
       return;
@@ -215,13 +274,9 @@ export class Banan {
 
     Reflect.set(obj, savedName, originalFunction);
 
-    ///////////
-
-    // console.log("REFLECT SET", obj, key);
     const banan = this;
     Reflect.set(obj, key, function (this: any, ...args: any[]) {
-      // console.log("IN REFLECT", obj, key);
-      if (banan.isEnabled()) {
+      if (banan.isRecording()) {
         banan.pushStack(memKey);
         const result = originalFunction.apply(this, args);
         banan.popStack(memKey);
@@ -262,10 +317,14 @@ export class Banan {
   }
 }
 
+/**
+ * Profiling decorator that should be applied to any code to be profiled.
+ */
 export function profile(
   target: object | Function,
   key?: string | symbol,
   _descriptor?: TypedPropertyDescriptor<any>,
 ): void {
+  if (!BANAN_ENABLED) return;
   Banan.instance.profile(target, key, _descriptor);
 }
