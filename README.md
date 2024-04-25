@@ -43,7 +43,8 @@ class MinerRole {
     static run(creep: Creep) {
         // To mark important events you'd like to see on the profiling
         // timeline, you can add marks like this.
-        Banan.instance.addMark("Run `${creep.name}`);
+        Banan.instance.addMark("Run `${creep.name}`");
+        ...
     }
 }
 
