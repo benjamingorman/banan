@@ -1,5 +1,5 @@
 import { FlameChart, type FlameChartNode, type Mark } from "flame-chart-js";
-import "./style.css";
+import "./style.scss";
 
 enum ScreepsColors {
 	Background = "#1C1C1C",
