@@ -2,7 +2,7 @@ TODO
 =====
 
 [ ] Add bot code to the repo
-[ ] Use sass instead of css
+[x] Use sass instead of css
 [ ] Use vue for some better component rendering?
 [ ] Make a docker-compose setup for running the app
 [ ] Make an option to view a flame graph averaged out over the whole history
