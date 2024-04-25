@@ -1,7 +1,7 @@
 🍌 banan
 =====
 
-banan is an improved profiler for Screeps, which captures the call
+banan is a hierarchical profiler for Screeps, which captures the call
 tree of your bot and displays profiling information as a
 [flame graph](https://www.brendangregg.com/flamegraphs.html)
 in a frontend web view.
