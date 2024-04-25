@@ -22,14 +22,15 @@ to render a flame graph in the browser.
 instructions
 -----
 
-1. Add [bot/banan.ts](./bot/banan.ts) to your screeps bot and call it from your main loop. See [configuring the bot](#configuring-the-bot) below.
+1. Add [bot/banan.ts](./bot/banan.ts) to your screeps bot and call it from your main loop. See [configuring the bot](#integrating-with-your-bot) below.
 2. Deploy the update to your screeps bot and check that `Memory.BANAN` has been created. By default banan will write to the `BANAN` key in `Memory` but this can be configured by changing `autoSaveKey` (see below).
 3. Create `backend/secrets.yml` with the credentials for your user on the screeps server you wish to profile (see `secrets.example.yml` for an example).
 4. Run `docker compose up` to start the banan server + frontend.
 5. Visit http://localhost:8080 to view the frontend.
 
 
-### Configuring the bot
+integrating with your bot
+---
 
 Example of how to setup banan in your bot:
 
@@ -39,7 +40,11 @@ import { Banan, profile } from "./profiler/banan";
 // Add the profile decorator to every class you wish to profile.
 @profile
 class MinerRole {
-    ...
+    static run(creep: Creep) {
+        // To mark important events you'd like to see on the profiling
+        // timeline, you can add marks like this.
+        Banan.instance.addMark("Run `${creep.name}`);
+    }
 }
 
 // Banan must be initialized to tell it to save to memory on every tick
