@@ -76,6 +76,22 @@ const getNodeColor = (depth: number, duration: number): string => {
 	return color;
 };
 
+const colorByTotalDuration = (duration: number): string => {
+	if (duration > 10) {
+		return "red";
+	}
+	if (duration > 5) {
+		return "orange";
+	}
+	if (duration > 1) {
+		return "yellow";
+	}
+	if (duration > 0.2) {
+		return "lightgreen";
+	}
+	return "white";
+};
+
 const bananNodeToFlameChartNode = (
 	bananNode: ProfilingNode,
 	depth = 0,
@@ -155,8 +171,26 @@ const renderSummary = (node: ProfilingNode) => {
 
 	for (const item of summary) {
 		const row = document.createElement("tr");
+		row.style.setProperty("color", colorByTotalDuration(item.total));
+		const keyParts = item.key.split(":");
+		let keySpans = [];
+
+		for (let i = 0; i < keyParts.length; i++) {
+			const part = keyParts[i];
+			if (i === 0) {
+				keySpans.push(`<span class="key-class">${part}</span>`);
+			} else {
+				keySpans.push(`<span class="key-method">:${part}</span>`);
+			}
+		}
+
+		if (item.key.length <= 14) {
+			// No need for breaks
+			keySpans = [keySpans.join("")];
+		}
+
 		const items: string[] = [
-			`<td>${item.key}</td>`,
+			`<td>${keySpans.join("<br>")}</td>`,
 			`<td>${item.total.toFixed(2)}</td>`,
 			`<td>${item.percent.toFixed(1)}%</td>`,
 			`<td>${item.count}</td>`,

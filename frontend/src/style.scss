@@ -13,6 +13,16 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+$color-screeps-background: #1c1c1c;
+$color-screeps-map: #2b2b2b;
+$color-screeps-lab: #3b3b3b;
+$color-screeps-energy: #fddc6a;
+$color-screeps-mapArrow: #494949;
+$color-screeps-rampart-middle: #354c35;
+$color-screeps-rampart-edge: #438843;
+$color-screeps-controller-dark: #5654d9;
+$color-screeps-controller-light: #9997fa;
+
 body {
   margin: 0;
 }
@@ -29,7 +39,7 @@ body {
   height: 80vh;
 
   .sidebar {
-    flex-basis: 480px;
+    // flex-basis: 380px;
     border: 1px solid #333;
     border-top: none;
     border-left: none;
@@ -44,9 +54,33 @@ body {
     table {
       font-size: 0.8em;
 
+      tr td:nth-child(1) {
+        text-align: right;
+        padding-right: 10px;
+        width: 150px;
+        max-width: 150px;
+        word-wrap: break-word;
+
+        span.key-class {
+          color: $color-screeps-controller-dark;
+        }
+
+        span.key-method {
+          color: $color-screeps-controller-light;
+        }
+      }
+
+      td {
+        vertical-align: text-bottom;
+      }
+
       tr:hover {
-        color: #fddc6a;
-        text-decoration: underline;
+        cursor: pointer;
+
+        td:not(:nth-child(1)) {
+          // color: $color-screeps-controller-light;
+          text-decoration: underline;
+        }
       }
     }
   }
