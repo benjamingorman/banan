@@ -1,3 +1,5 @@
+import json
+
 from fastapi import FastAPI, Response
 
 from src.config import load_config
@@ -17,9 +19,10 @@ async def get_history(server_name: str, response: Response):
 
     try:
         history = fetch_history(config, server_name)
-        print(history)
+        print("history", json.dumps(history)[:100], "...")
     except Exception as e:
         return {"error": str(e)}
 
     data = [node for node in history.get("data", []) if node]
+    print("data", json.dumps(data)[:100], "...")
     return {"history": sorted(data, key=lambda node: node["key"])}
