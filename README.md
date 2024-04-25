@@ -62,5 +62,5 @@ export const loop = () => {
 };
 ```
 
-When you don't want to profile, banan can be completely disabled by setting
-`BANAN_ENABLED` in `banan.ts` to `false`.
+When you don't wish to profile anymore, banan can be completely disabled by
+setting `BANAN_ENABLED` in `banan.ts` to `false`.
