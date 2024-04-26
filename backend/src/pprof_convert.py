@@ -24,7 +24,7 @@ class PprofConverter:
         cpu_in_ns = ms_to_ns(node.cpu)
         start_in_ns = ms_to_ns(node.start)
 
-        self.profile.string_table.append("___begin___") # since keys start from 1
+        self.profile.string_table.append("") # empty string must be first entry
 
         # self.profile.time_nanos = start_in_ns
         self.profile.time_nanos = 1
