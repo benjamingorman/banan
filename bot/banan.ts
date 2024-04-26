@@ -1,5 +1,6 @@
 /** Whether to enable Banan or not. Turn off when not profiling. */
 export const BANAN_ENABLED = true;
+const BANAN_DUMP_FORMAT_VERSION = 1;
 
 /** Options for configuring the profiler. */
 export interface BananOpts {
@@ -7,11 +8,50 @@ export interface BananOpts {
   autoSaveKey?: string;
 }
 
+/**
+ * A compressed version of a profiling node.
+ * Order is: keyMap id of key, start, cpu, intents, children
+ */
+type CompressedProfilingNode = [
+  number,
+  number,
+  number,
+  number,
+  CompressedProfilingNode[],
+];
+
+/**
+ * A compressed dump of a single tick.
+ * We compress it so as to use less space in memory.
+ */
+export interface CompressedProfilingDump {
+  m: ProfilingMark[];
+  d: CompressedProfilingNode;
+}
+
+/**
+ * A map between node keys and their integer IDs.
+ */
+interface KeyMap {
+  maxID: number; // store the maximum ID to avoid having to find it on the fly
+  map: { [key: string]: number };
+}
+
+/**
+ * A compressed dump of many ticks.
+ */
+export interface CompressedProfilingHistory {
+  version: number;
+  keyMap: KeyMap;
+  ticks: (CompressedProfilingDump | null)[];
+}
+
 /** A node in the profiling tree. */
 export interface ProfilingNode {
   key: string;
   start: number;
   cpu: number;
+  intents?: number;
   children: ProfilingNode[];
   marks?: ProfilingMark[];
 }
@@ -24,6 +64,7 @@ export interface ProfilingNode {
 interface StackFrame {
   key: string;
   start: number;
+  intents?: number;
   children: ProfilingNode[];
 }
 
@@ -68,16 +109,20 @@ export class Banan {
   private marks: ProfilingMark[] = [];
 
   /** Keep a history of the last N ticks */
-  private history: Array<ProfilingNode | undefined> = new Array(30);
+  private history: CompressedProfilingHistory = {
+    version: BANAN_DUMP_FORMAT_VERSION,
+    keyMap: { maxID: 0, map: {} },
+    ticks: [],
+  };
 
   /**
    * Initialize the profiler with supplied options.
    */
   public init(opts?: BananOpts): void {
     if (!BANAN_ENABLED) return;
-    this.history = new Array(opts?.maxHistory || 30);
-    this.history.fill(undefined);
-    Object.seal(this.history);
+    this.history.ticks = new Array(opts?.maxHistory || 30);
+    this.history.ticks.fill(null);
+    Object.seal(this.history.ticks);
 
     if (opts?.autoSaveKey) {
       this.autoSaveKey = opts.autoSaveKey;
@@ -108,7 +153,10 @@ export class Banan {
     this.tick = undefined;
     this.tickRootNode!.cpu = Game.cpu.getUsed();
     this.tickRootNode!.marks = this.marks;
-    this.history[this.getHistoryPtr()] = this.tickRootNode;
+    this.history.ticks[this.getHistoryPtr()] = convertToCompressedDump(
+      this.history.keyMap,
+      this.tickRootNode!,
+    );
 
     if (this.autoSaveKey) {
       this.saveToMemory(this.autoSaveKey);
@@ -130,19 +178,33 @@ export class Banan {
   }
 
   /**
+   * Record an intent.
+   */
+  public addIntent(): void {
+    if (!BANAN_ENABLED) return;
+    if (!this.isRecording()) return;
+    console.log("Got intent");
+
+    const currentFrame = this.peekStack();
+    if (currentFrame) {
+      currentFrame.intents = (currentFrame.intents ?? 0) + 1;
+    }
+  }
+
+  /**
    * Return the profiling node from the current tick.
    */
-  public getCurrentTickDump(): ProfilingNode | undefined {
-    if (!BANAN_ENABLED) return undefined;
-    return this.history[this.getHistoryPtr(Game.time)];
+  public getCurrentTickDump(): CompressedProfilingDump | null {
+    if (!BANAN_ENABLED) return null;
+    return this.history.ticks[this.getHistoryPtr(Game.time)];
   }
 
   /**
    * Return the profiling node from the previous tick.
    */
-  public getPrevTickDump(): ProfilingNode | undefined {
-    if (!BANAN_ENABLED) return undefined;
-    return this.history[this.getHistoryPtr(Game.time - 1)];
+  public getPrevTickDump(): CompressedProfilingDump | null {
+    if (!BANAN_ENABLED) return null;
+    return this.history.ticks[this.getHistoryPtr(Game.time - 1)];
   }
 
   /**
@@ -150,7 +212,7 @@ export class Banan {
    */
   public getPrevTickCpuUsed(): number | undefined {
     if (!BANAN_ENABLED) return undefined;
-    return this.getPrevTickDump()?.cpu;
+    return this.getPrevTickDump()?.d[2];
   }
 
   /**
@@ -160,7 +222,7 @@ export class Banan {
     if (!BANAN_ENABLED) return;
     const currentDump = this.getCurrentTickDump();
     if (currentDump) {
-      console.log("🍌 Current tick CPU usage:", currentDump.cpu);
+      console.log("🍌 Current tick CPU usage:", currentDump.d[2]);
     } else {
       console.log("🍌 No current tick!");
     }
@@ -172,10 +234,10 @@ export class Banan {
   public getAverageCpuUsed(): number {
     if (!BANAN_ENABLED) return 0;
     let count = 0;
-    const total = this.history.reduce((acc, node) => {
-      if (node) {
+    const total = this.history.ticks.reduce((acc, dump) => {
+      if (dump) {
         count++;
-        return acc + node.cpu;
+        return acc + dump.d[2];
       }
       return acc;
     }, 0);
@@ -183,17 +245,17 @@ export class Banan {
   }
 
   /**
-   * Write the current profiling history to memory.
+   * Write the current profiling history to memory as a string.
    */
   public saveToMemory(key: string): void {
-    (Memory as any)[key] = this.history;
+    (Memory as any)[key] = JSON.stringify(this.history);
   }
 
   /**
    * Get a pointer to the history array for the given tick.
    */
   private getHistoryPtr(targetTick?: number): number {
-    return (targetTick ?? Game.time) % this.history.length;
+    return (targetTick ?? Game.time) % this.history.ticks.length;
   }
 
   /**
@@ -286,6 +348,10 @@ export class Banan {
     });
   }
 
+  private peekStack(): StackFrame | undefined {
+    return this.stack[this.stack.length - 1];
+  }
+
   /**
    * Push a function call on to the stack when it begins.
    */
@@ -307,15 +373,63 @@ export class Banan {
     if (frame.key !== key) {
       throw new Error("Banan stack mismatch");
     }
+
     const parent = this.stack[this.stack.length - 1] || this.tickRootNode;
-    parent.children.push({
+    const node: ProfilingNode = {
       key,
       start: frame.start,
       cpu: stopCpu - frame.start,
       children: frame.children,
-    });
+    };
+
+    if (frame.intents) {
+      node.intents = frame.intents;
+      parent.intents = (parent.intents ?? 0) + frame.intents;
+    }
+
+    parent.children.push(node);
   }
 }
+
+const convertToCompressedDump = (
+  keyMap: KeyMap,
+  node: ProfilingNode,
+): CompressedProfilingDump => {
+  const marks = node.marks ?? [];
+  const result: CompressedProfilingDump = {
+    m: marks,
+    d: compressNode(keyMap, node),
+  };
+
+  return result;
+};
+
+/**
+ * Compress a profiling node to a smaller array-based form.
+ * To ensure keys use minimal space, keep a map of {[key}: id}
+ * Instead of storing the whole string of the key in each node, just store
+ * the integer id.
+ * Order is: keyMap id of key, start, cpu, intents, children
+ */
+const compressNode = (
+  keyMap: KeyMap,
+  node: ProfilingNode,
+): CompressedProfilingNode => {
+  let keyID = keyMap.map[node.key];
+  if (!keyID) {
+    keyID = keyMap.maxID++;
+    keyMap.map[node.key] = keyID;
+  }
+
+  const comp: CompressedProfilingNode = [
+    keyID,
+    Math.round(node.start * 10000) / 10000,
+    Math.round(node.cpu * 10000) / 10000,
+    node.intents || 0,
+    node.children.map((child) => compressNode(keyMap, child)),
+  ];
+  return comp;
+};
 
 /**
  * Profiling decorator that should be applied to any code to be profiled.
