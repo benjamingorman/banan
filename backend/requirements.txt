@@ -5,3 +5,5 @@ fastapi==0.110.2
 uvicorn==0.29
 protobuf==5.26.1
 betterproto==1.2.5
+apscheduler==3.10.4
+requests==2.31.0

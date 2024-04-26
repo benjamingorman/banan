@@ -1,9 +1,16 @@
 from typing import Optional, Dict
-import json
-from dataclasses import asdict
 
 from src.fetch_history import ProfilingNode
-from src.protogen.perftools.profiles import Location, Function, Profile, Sample, ValueType, Mapping, Line
+from src.protogen.perftools.profiles import (
+    Location,
+    Function,
+    Profile,
+    Sample,
+    ValueType,
+    Mapping,
+    Line,
+)
+from src.protogen.orig import pprof_pb2
 
 
 def ms_to_ns(ms: float) -> int:
@@ -20,11 +27,32 @@ class PprofConverter:
         self.next_location_id = 1
         self.profile = Profile()
 
+    def convert_to_pprof_bytes(self, node: ProfilingNode) -> bytes:
+        """Convert a from banan format to a pprof format bytestring."""
+        profile = self.convert_to_pprof_format(node)
+        serialized_profile = bytes(profile)
+
+        # Patch the string table:
+        # python-betterproto seems to have a bug where it won't properly
+        # serialize the empty string at the start of the string table
+        # To fix this, load the dump with the original Google python
+        # code and just patch the string table.
+        patched_profile = pprof_pb2.Profile()
+        patched_profile.ParseFromString(serialized_profile)
+        patched_profile.string_table.insert(0, "")
+
+        return patched_profile.SerializeToString()
+
     def convert_to_pprof_format(self, node: ProfilingNode) -> Profile:
+        """Convert a from banan format to a pprof format Profile object.
+
+        This object comes from generated Python code created by
+        python-betterproto from the pprof protobuf.
+        """
         cpu_in_ns = ms_to_ns(node.cpu)
         start_in_ns = ms_to_ns(node.start)
 
-        self.profile.string_table.append("") # empty string must be first entry
+        self.profile.string_table.append("")  # empty string must be first entry
 
         # self.profile.time_nanos = start_in_ns
         self.profile.time_nanos = 1
@@ -36,7 +64,6 @@ class PprofConverter:
             type=self._get_string_map_id("cpu"),
             unit=self._get_string_map_id(unit_name),
         )
-
 
         self.profile.sample_type.append(
             ValueType(
@@ -58,11 +85,13 @@ class PprofConverter:
         for key, lid in self.location_id_map.items():
             assert self.location_map[lid]
             assert self.function_map[lid]
-            assert self.profile.location[lid-1]
-            assert self.profile.function[lid-1]
+            assert self.profile.location[lid - 1]
+            assert self.profile.function[lid - 1]
 
         for key, sid in self.string_map.items():
-            assert self.profile.string_table[sid] == key, f"{key} {self.profile.string_table[sid]}"
+            assert (
+                self.profile.string_table[sid] == key
+            ), f"{key} {self.profile.string_table[sid]}"
 
         return self.profile
 
@@ -73,10 +102,7 @@ class PprofConverter:
 
         # If no sample exists, bootstrap the first sample
         if not sample:
-            sample = Sample(
-                location_id=[loc.id],
-                value=[ms_to_ns(node.self_cost()), 1]
-            )
+            sample = Sample(location_id=[loc.id], value=[ms_to_ns(node.self_cost()), 1])
             self.profile.sample.append(sample)
         else:
             sample.location_id.insert(0, lid)
@@ -102,19 +128,11 @@ class PprofConverter:
                 column=1,
             )
             # Create a new location
-            loc = Location(
-                id=lid,
-                address=1,
-                mapping_id=lid,
-                line=[line]
-            )
+            loc = Location(id=lid, address=1, mapping_id=lid, line=[line])
             self.location_map[lid] = loc
             self.profile.location.append(loc)
 
-            mapping = Mapping(
-                    id=lid,
-                    filename=self._get_string_map_id("main.ts")
-            )
+            mapping = Mapping(id=lid, filename=self._get_string_map_id("main.ts"))
             self.profile.mapping.append(mapping)
         return loc
 
@@ -133,7 +151,6 @@ class PprofConverter:
             self.profile.function.append(func)
         return func
 
-
     def _get_location_id(self, key: str):
         """Get the GID of a function from the pprof function table.
 
@@ -145,7 +162,6 @@ class PprofConverter:
             self.next_location_id += 1
             self.location_id_map[key] = lid
         return lid
-
 
     def _get_string_map_id(self, key: str):
         """Get the ID of a string from the pprof string table.
@@ -164,15 +180,15 @@ class PprofConverter:
 
 if __name__ == "__main__":
     profile = Profile()
-    with open("example_cpu.prof", "rb") as example_fh:
+    with open("debug/example_cpu.prof", "rb") as example_fh:
         profile = profile.parse(example_fh.read())
 
-    with open("example_cpu.prof.json", "w") as fh:
+    with open("debug/example_cpu.prof.json", "w") as fh:
         fh.write(profile.to_json(indent=2))
 
     pserver_profile = Profile()
-    with open("pserver.prof", "rb") as example_fh:
+    with open("debug/pserver.prof", "rb") as example_fh:
         pserver_profile = pserver_profile.parse(example_fh.read())
 
-    with open("pserver.prof.json", "w") as fh:
+    with open("debug/pserver.prof.json", "w") as fh:
         fh.write(pserver_profile.to_json(indent=2))

@@ -2,3 +2,4 @@ secrets.yml
 .venv
 __pycache__
 *.pyc
+debug/

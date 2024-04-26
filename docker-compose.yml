@@ -19,3 +19,16 @@ services:
     volumes:
       - ./frontend/:/app/
       - /app/node_modules
+
+  pyroscope:
+    image: "grafana/pyroscope:latest"
+    ports:
+      - 4040:4040
+    command:
+      - server
+    volumes:
+      # - ./configs/pyroscope.yaml:/etc/pyroscope/server.yaml
+      - pyroscope_data:/var/lib/pyroscope
+
+volumes:
+  pyroscope_data:

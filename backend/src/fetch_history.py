@@ -6,29 +6,36 @@ from typing import Dict, List, Tuple, Optional
 import screepsapi
 import pydantic
 
-from src.config import AppConfig, load_config
+from src.config import AppConfig, load_config, DEBUG_ENABLED, DEBUG_DIR
 
 
 class KeyMap(pydantic.BaseModel):
     """See equivalent TypeScript definition."""
+
     map: Dict[str, int]
     maxID: int
 
+
 class ProfilingMark(pydantic.BaseModel):
     """See equivalent TypeScript definition."""
+
     shortName: str
     fullName: str
     timestamp: float
 
+
 class CompressedProfilingDump(pydantic.BaseModel):
     """See equivalent TypeScript definition."""
+
     m: List[ProfilingMark]
 
     d: Tuple[int, float, float, int, Tuple]
     """Order is: keyMap id of key, start, cpu, intents, children"""
 
+
 class CompressedProfilingHistory(pydantic.BaseModel):
     """See equivalent TypeScript definition."""
+
     version: int
     ticks: List[CompressedProfilingDump]
     keyMap: KeyMap
@@ -36,6 +43,7 @@ class CompressedProfilingHistory(pydantic.BaseModel):
 
 class ProfilingNode(pydantic.BaseModel):
     """A decompressed profiling node."""
+
     key: str
     start: float
     cpu: float
@@ -55,6 +63,7 @@ def decompress_history(comp: CompressedProfilingHistory) -> List[ProfilingNode]:
     """Decompress a dump of profiling history."""
     return [decompress_dump(comp.keyMap, dump) for dump in comp.ticks]
 
+
 def decompress_dump(keyMap: KeyMap, dump: CompressedProfilingDump) -> ProfilingNode:
     """Decompress a single dump."""
     # Invert the key map so we can find a key by ID
@@ -62,6 +71,7 @@ def decompress_dump(keyMap: KeyMap, dump: CompressedProfilingDump) -> ProfilingN
     decomp = decompress_node(inverted_key_map, dump.d)
     decomp.marks = dump.m
     return decomp
+
 
 def decompress_node(inverted_key_map: Dict[int, str], node: Tuple) -> ProfilingNode:
     """Recursively decompress a single node."""
@@ -99,15 +109,15 @@ def fetch_history(cfg: AppConfig, server_name: str) -> List[ProfilingNode]:
     api = screepsapi.API(*pargs, **kwargs)
 
     resp = api.memory(shard="shard0", path=cfg.banan_history_key)
-    with open("dump.json", "w") as fh:
-        fh.write(json.dumps(resp))
+    if DEBUG_ENABLED:
+        with open(f"{DEBUG_DIR}/dump.json", "w") as fh:
+            fh.write(json.dumps(resp))
 
-    if not resp or not resp["ok"]:
+    if not resp or not resp.get("ok") or not resp.get("data"):
         raise ValueError("Failed to fetch history: {}".format(resp))
 
     comp = CompressedProfilingHistory.model_validate_json(resp["data"])
     return decompress_history(comp)
-
 
 
 if __name__ == "__main__":
