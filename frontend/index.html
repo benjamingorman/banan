@@ -1,40 +1,62 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🍌banan</title>
-  </head>
-  <body>
-    <div id="app">
-      <div class="app-main">
-        <div class="sidebar">
-          <h2>Summary</h2>
 
-          <table id="summary-table">
-          </table>
-        </div>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🍌banan</title>
+</head>
 
-        <div class="chart">
-          <canvas width="100vw" height="80vh" id="canvas"></canvas>
-        </div>
+<body>
+  <div id="app">
+    <div class="app-main">
+      <div class="sidebar">
+        <h2>Summary</h2>
+
+        <table id="summary-table">
+        </table>
       </div>
 
-      <div id="footer">
-        <div id="details-container">
-          <h2>Details</h2>
-          <div id="details-data"></div>
-        </div>
-        <div id="controls-container">
-          <h2>Controls</h2>
-          <button id="load">Load</button>
-          <select id="availableTicks">
-          </select>
-        </div>
+      <div id="chart">
+        <!-- <canvas width="100vw" height="80vh" id="canvas"></canvas> -->
       </div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+    <div id="footer">
+      <div id="details-container">
+        <h2>Details</h2>
+        <div id="details-data"></div>
+      </div>
+
+      <div id="controls-container">
+        <h2>Controls</h2>
+        <div>
+          <select id="availableTicks"></select>
+          <br>
+
+          <input type=radio name="graph-mode" value="single-tick-call-tree" checked>
+          <label for="graph-mode">Single tick call tree</label>
+          <br>
+
+          <input type=radio name="graph-mode" value="single-tick-totals">
+          <label for="graph-mode">Single tick totals</label>
+        </div>
+
+        <div>
+        </div>
+
+        <div>
+          <button id="refresh-btn">Refresh</button>
+        </div>
+      </div>
+    </div>
+    </select>
+  </div>
+  </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

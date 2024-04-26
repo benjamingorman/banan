@@ -1,113 +1,275 @@
-import { FlameChart, type FlameChartNode, type Mark } from "flame-chart-js";
 import "./style.scss";
+import type {
+	ApiHistoryResponse,
+	ProfilingNode,
+	ProfilingSummary,
+} from "./types";
 
-enum ScreepsColors {
-	Background = "#1C1C1C",
-	Map = "#2B2B2B",
-	Lab = "#3B3B3B",
-	Energy = "#FDDC6A",
-	MapArrow = "#494949",
-	RampartMiddle = "#354C35",
-	RampartEdge = "#438843",
-	ControllerDark = "#5654D9",
-	ControllerLight = "#9997FA",
-}
+import { colorByTotalDuration } from "./colors";
+import { renderFlameGraph } from "./flamegraph";
 
-// https://coolors.co/gradient-palette/494949-ffffff?number=7
-const BAR_COLOR_GRADIENT = [
-	ScreepsColors.Map,
-	ScreepsColors.Lab,
-	ScreepsColors.MapArrow,
-	ScreepsColors.RampartMiddle,
-	ScreepsColors.RampartEdge,
-	"#51b051",
-	"#5bc75b",
-	ScreepsColors.ControllerDark,
-	ScreepsColors.ControllerLight,
-	"#FF00FF",
-	"#39FF14",
-	"#40E0D0",
-	"#FFD700",
-].map((color) => `${color}`);
+type GraphDisplayMode = "single-tick-call-tree" | "single-tick-totals";
 
-const COLOR_LEVELS: [number, string][] = [
-	[0, BAR_COLOR_GRADIENT[0]],
-	[1, BAR_COLOR_GRADIENT[1]],
-	[2, BAR_COLOR_GRADIENT[2]],
-	[3, BAR_COLOR_GRADIENT[3]],
-	[4, BAR_COLOR_GRADIENT[4]],
-	[5, BAR_COLOR_GRADIENT[5]],
-	[6, BAR_COLOR_GRADIENT[6]],
-	[7, BAR_COLOR_GRADIENT[7]],
-	[8, BAR_COLOR_GRADIENT[8]],
-	[9, BAR_COLOR_GRADIENT[9]],
-];
+class AppEvents {
+	private static currentHistory: ProfilingNode[] | undefined;
+	private static graphDisplayMode: GraphDisplayMode = "single-tick-call-tree";
+	private static selectedTick: string | undefined;
 
-const DEFAULT_NODE_COLOR = ScreepsColors.MapArrow;
-const DEFAULT_MARK_COLOR = ScreepsColors.Energy;
+	/**
+	 * Called when the page first loads.
+	 */
+	static onPageLoad() {
+		refreshHistoryData();
+	}
 
-interface ApiHistoryResponse {
-	error?: string;
-	history?: ProfilingNode[];
+	/**
+	 * Called after we fetch profiling history from the API.
+	 */
+	static onFetchHistory(resp: ApiHistoryResponse) {
+		AppEvents.setAvailableTicks(resp);
+
+		AppEvents.currentHistory = resp.history;
+
+		// Load the most recent tick we have data for by default
+		// const node = AppEvents.getNodeForMostRecentTick();
+		// if (!node) {
+		// 	setError("No node found in response");
+		// 	return;
+		// }
+
+		// AppEvents.onSetCurrentNode(node);
+		AppEvents.onSetGraphDisplayMode("single-tick-call-tree");
+	}
+
+	/**
+	 * Called after we fail to fetch profiling history from the API.
+	 */
+	static onFetchHistoryError(error: string) {
+		setError(error);
+	}
+
+	/**
+	 * Set the display mode for the graph.
+	 */
+	static onSetGraphDisplayMode(mode: GraphDisplayMode) {
+		console.log("mode", mode);
+		AppEvents.graphDisplayMode = mode;
+
+		switch (mode) {
+			case "single-tick-totals": {
+				break;
+			}
+
+			case "single-tick-call-tree": {
+				break;
+			}
+
+			default:
+				throw new Error(`Unhandled display mode: ${mode}`);
+		}
+
+		let selectedTick = AppEvents.selectedTick;
+		if (!selectedTick && AppEvents.currentHistory?.length) {
+			selectedTick =
+				AppEvents.currentHistory[AppEvents.currentHistory.length - 1].key;
+		}
+
+		if (selectedTick) AppEvents.onSetSelectedTick(selectedTick);
+	}
+
+	/**
+	 * Set the node to display in the graph.
+	 */
+	static onSetCurrentNode(node: ProfilingNode) {
+		console.log("onSetCurrentNode", node);
+		renderFlameGraph(node);
+		renderSummary(node);
+	}
+
+	/**
+	 * Set the selected tick to display.
+	 */
+	static onSetSelectedTick(tick: string) {
+		AppEvents.selectedTick = tick;
+
+		let node;
+		switch (AppEvents.graphDisplayMode) {
+			case "single-tick-call-tree":
+				node = AppEvents.getNodeForTick(tick);
+				break;
+
+			case "single-tick-totals": {
+				const tickNode = AppEvents.getNodeForTick(tick);
+				if (tickNode) {
+					node = computeTotalsNode(tickNode);
+				}
+				break;
+			}
+		}
+
+		if (!node) {
+			console.error("No node for tick", tick, AppEvents.currentHistory);
+			return;
+		}
+
+		AppEvents.onSetCurrentNode(node);
+	}
+
+	/**
+	 * When the user clicks the refresh button.
+	 */
+	static onPressRefreshBtn() {
+		refreshHistoryData();
+	}
+
+	/**
+	 * Update the available ticks dropdown.
+	 */
+	private static setAvailableTicks(resp: ApiHistoryResponse) {
+		const availableTicksElem = document.getElementById("availableTicks")!;
+		availableTicksElem.innerHTML = "";
+		AppEvents.currentHistory = resp.history;
+		for (const dump of resp.history || []) {
+			availableTicksElem.innerHTML += `<option value="${dump.key}">${dump.key}</option>`;
+		}
+	}
+
+	/**
+	 * Try and get the node for the given tick from the current history.
+	 */
+	private static getNodeForTick(key: string): ProfilingNode | undefined {
+		for (const node of AppEvents.currentHistory || []) {
+			if (node.key === key) {
+				return node;
+			}
+		}
+		return undefined;
+	}
+
+	private static getNodeForMostRecentTick(): ProfilingNode | undefined {
+		return AppEvents.currentHistory?.[AppEvents.currentHistory.length - 1];
+	}
 }
 
 /**
- * A node in the format that banan creates.
+ * Compute an node which shows the average of all of the calls in each
+ * history node.
  */
-interface ProfilingNode {
-	key: string;
-	start: number;
-	cpu: number;
-	children: ProfilingNode[];
-	marks?: Mark[];
-}
-
-type ProfilingSummary = ProfilingSummaryItem[];
-
-interface ProfilingSummaryItem {
-	key: string;
-	total: number;
-	count: number;
-	percent: number;
-}
-
-const getNodeColor = (depth: number, duration: number): string => {
-	const [_, color] = COLOR_LEVELS[Math.min(depth, COLOR_LEVELS.length - 1)];
-	return color;
-};
-
-const colorByTotalDuration = (duration: number): string => {
-	if (duration > 10) {
-		return "red";
+const computeTotalsNode = (rootNode: ProfilingNode): ProfilingNode => {
+	interface TotalsNode {
+		key: string;
+		count: number;
+		totalCpu: number;
+		totalStart: number;
+		childrenMap: Map<string, TotalsNode>;
 	}
-	if (duration > 5) {
-		return "orange";
-	}
-	if (duration > 1) {
-		return "yellow";
-	}
-	if (duration > 0.2) {
-		return "lightgreen";
-	}
-	return "white";
-};
 
-const bananNodeToFlameChartNode = (
-	bananNode: ProfilingNode,
-	depth = 0,
-): FlameChartNode => {
-	return {
-		name: bananNode.key,
-		start: bananNode.start,
-		duration: bananNode.cpu,
-		color: getNodeColor(depth, bananNode.cpu),
-		// value: Math.round(bananNode.cpu * 1000) / 1000,
-		children: bananNode.children.map((node) =>
-			bananNodeToFlameChartNode(node, depth + 1),
-		),
+	const computeTotals = (
+		node: ProfilingNode,
+		isRootNode: boolean,
+		parentChildrenMap: Map<string, TotalsNode>,
+	): TotalsNode => {
+		// const key = isRootNode ? "Averaged" : node.key;
+		// const keys = [...(parentKeys || []), key];
+		// const mapKey = keys.join(",");
+		const key = node.key;
+
+		console.log("Computing", node.key, key);
+
+		let totalsNode = parentChildrenMap.get(key);
+		if (!totalsNode) {
+			totalsNode = {
+				key: key,
+				count: 1,
+				totalCpu: node.cpu,
+				totalStart: node.start,
+				childrenMap: new Map<string, TotalsNode>(),
+			};
+			parentChildrenMap.set(key, totalsNode);
+		} else {
+			totalsNode.count += 1;
+			totalsNode.totalCpu += node.cpu;
+			totalsNode.totalStart += node.start;
+		}
+
+		for (const child of node.children) {
+			const childTotalsNode = computeTotals(
+				child,
+				false,
+				totalsNode.childrenMap,
+			);
+
+			if (!totalsNode.childrenMap.has(childTotalsNode.key)) {
+				totalsNode.childrenMap.set(childTotalsNode.key, childTotalsNode);
+			}
+		}
+
+		return totalsNode;
 	};
+
+	const rootChildrenMap = new Map<string, TotalsNode>();
+	computeTotals(rootNode, true, rootChildrenMap);
+
+	const totalsRoot = rootChildrenMap.get(rootNode.key)!;
+
+	console.log("totalsRoot", totalsRoot);
+
+	const convert = (
+		totalsNode: TotalsNode,
+		thisStart: number,
+		parentCpu?: number,
+		siblingsCpuSum?: number,
+	): ProfilingNode => {
+		console.log("Convert", totalsNode.key, thisStart);
+
+		let thisCpu = totalsNode.totalCpu;
+
+		if (parentCpu) {
+			// For children their cpu is a fraction of the parent
+			thisCpu = Math.min((thisCpu / siblingsCpuSum!) * parentCpu, thisCpu);
+		}
+
+		// const thisEnd = thisStart + thisCpu;
+
+		// If we keep the original averaged start times on the graph it won't make
+		// much sense since lots of things will be overlapping.
+		// Instead let's set the start time to a proportional value of the parent
+		// node's duration.
+		// The children can still be sorted by average start time though.
+
+		const children = Array.from(totalsNode.childrenMap.values()).sort(
+			(child) => child.totalStart / child.count,
+		);
+		const childrenCpuSum = children.reduce(
+			(sum, child) => sum + child.totalCpu,
+			0,
+		);
+
+		const convertedChildren = [];
+		let lastEnd = thisStart;
+
+		for (const child of children) {
+			const childCpu = (child.totalCpu / childrenCpuSum) * thisCpu;
+			convertedChildren.push(convert(child, lastEnd, thisCpu, childrenCpuSum));
+			lastEnd += childCpu;
+		}
+
+		return {
+			key: totalsNode.key,
+			cpu: thisCpu,
+			start: thisStart,
+			children: convertedChildren,
+		};
+	};
+
+	const convertedTree = convert(totalsRoot, 0);
+	console.log(convertedTree);
+	return convertedTree;
 };
 
+/**
+ * Compute a table style summary of the given profiling tree.
+ */
 const computeSummary = (bananNode: ProfilingNode): ProfilingSummary => {
 	const tickTotal = bananNode.cpu;
 	const totals = new Map<string, number>();
@@ -136,29 +298,11 @@ const computeSummary = (bananNode: ProfilingNode): ProfilingSummary => {
 	return result;
 };
 
+/**
+ * Set an error message to be displayed in the UI.
+ */
 const setError = (error: string) => {
 	document.getElementById("details")!.innerHTML = error;
-};
-
-let currentHistory: ProfilingNode[] | undefined;
-
-const getNodeForTick = (key: string): ProfilingNode | undefined => {
-	for (const node of currentHistory || []) {
-		if (node.key === key) {
-			return node;
-		}
-	}
-	return undefined;
-};
-
-const changeTick = (key: string) => {
-	const node = getNodeForTick(key);
-	if (!node) {
-		console.error("No node for tick", key, currentHistory);
-		return;
-	}
-
-	renderFlameGraph(node);
 };
 
 const renderSummary = (node: ProfilingNode) => {
@@ -201,137 +345,43 @@ const renderSummary = (node: ProfilingNode) => {
 	}
 };
 
-const renderFlameGraph = (node: ProfilingNode) => {
-	const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-	const nodes = [bananNodeToFlameChartNode(node)];
-
-	canvas.width = window.innerWidth * 1;
-	canvas.height = window.innerHeight * 0.8;
-
-	// TODO handle resize
-	// const observer = new ResizeObserver((entries) => {
-	// 	canvas.width = canvas.clientWidth;
-	// 	canvas.height = canvas.clientHeight;
-	// });
-	// observer.observe(canvas);
-
-	// export type RenderStyles = {
-	//     blockHeight: number;
-	//     blockPaddingLeftRight: number;
-	//     backgroundColor: string;
-	//     font: string;
-	//     fontColor: string;
-	//     badgeSize: number;
-	//     tooltipHeaderFontColor: string;
-	//     tooltipBodyFontColor: string;
-	//     tooltipBackgroundColor: string;
-	//     tooltipShadowColor: string;
-	//     tooltipShadowBlur: number;
-	//     tooltipShadowOffsetX: number;
-	//     tooltipShadowOffsetY: number;
-	//     headerHeight: number;
-	//     headerColor: string;
-	//     headerStrokeColor: string;
-	//     headerTitleLeftPadding: number;
-	// };
-
-	const flameChart = new FlameChart({
-		canvas, // mandatory
-		data: nodes,
-		colors: {
-			task: "#FFFFFF",
-			"sub-task": "#000000",
-		},
-		marks: (node.marks || []).map((mark) => ({
-			...mark,
-			color: DEFAULT_MARK_COLOR,
-		})),
-		settings: {
-			// hotkeys: {
-			//   active: true,  // enable navigation using arrow keys
-			//   scrollSpeed: 0.5, // scroll speed (ArrowLeft, ArrowRight)
-			//   zoomSpeed: 0.001, // zoom speed (ArrowUp, ArrowDown, -, +)
-			//   fastMultiplayer: 5, // speed multiplier when zooming and scrolling (activated by Shift key)
-			// },
-			options: {
-				// tooltip: true
-				tooltip: (data, renderEngine, mouse) => {
-					if (!data?.data?.source) {
-						return;
-					}
-					const node = data.data.source;
-
-					document.getElementById("details-data")!.innerHTML = `
-           <p>
-            Name: ${node.name}<br>
-            Start: ${node.start.toFixed(3)}<br>
-            Duration: ${node.duration.toFixed(3)}<br>
-           </p>
-          `;
-				},
-				timeUnits: "ms",
-			},
-			styles: {
-				timeGrid: {
-					// color: "#202020",
-				},
-				main: {
-					blockHeight: 40,
-					// Use screeps style colors
-					backgroundColor: ScreepsColors.Background,
-					fontColor: ScreepsColors.Energy,
-				},
-			},
-		},
-	});
-
-	console.log("Created flamegraph");
-	flameChart.setNodes(nodes);
-	console.log("nodes", nodes);
-	renderSummary(node);
-};
-
-const refreshGraph = () => {
+const refreshHistoryData = () => {
 	console.log("Refreshing graph");
 
 	fetch("/api/history/pserver")
 		.then((response) => response.json())
 		.then((data) => {
-			console.log(data);
+			console.log("history", data);
 			const apiResp = data as ApiHistoryResponse;
 
 			if (apiResp.error) {
-				setError(apiResp.error);
+				AppEvents.onFetchHistoryError(apiResp.error);
 				return;
 			}
 
-			const availableTicksElem = document.getElementById("availableTicks")!;
-			availableTicksElem.innerHTML = "";
-			currentHistory = apiResp.history;
-			for (const dump of apiResp.history || []) {
-				availableTicksElem.innerHTML += `<option value="${dump.key}">${dump.key}</option>`;
-			}
-
-			// Load the most recent tick we have data for by default
-			const dump = apiResp.history?.[apiResp.history.length - 1];
-			if (!dump) {
-				setError("No dump found in response");
-				return;
-			}
-
-			renderFlameGraph(dump);
+			AppEvents.onFetchHistory(data);
 		});
 };
 
-refreshGraph();
-document.getElementById("load")!.onclick = () => {
-	refreshGraph();
-};
+window.addEventListener("load", () => {
+	AppEvents.onPageLoad();
+});
 
-document.getElementById("availableTicks")!.onchange = (event) => {
-	changeTick((event.target as HTMLSelectElement).value);
-};
+document.getElementById("refresh-btn")?.addEventListener("click", () => {
+	AppEvents.onPressRefreshBtn();
+});
 
-// setInterval(() => {
-// 	refreshGraph();
-// }, 10000);
+document
+	.getElementById("availableTicks")
+	?.addEventListener("change", (event) => {
+		AppEvents.onSetSelectedTick((event.target as HTMLSelectElement).value);
+	});
+
+const graphModeRadios = document.querySelectorAll("input[name='graph-mode']");
+
+for (const radio of graphModeRadios) {
+	radio.addEventListener("change", (event) => {
+		const val = (event.target as HTMLInputElement).value as GraphDisplayMode;
+		AppEvents.onSetGraphDisplayMode(val);
+	});
+}

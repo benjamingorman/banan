@@ -5,7 +5,8 @@ TODO
 * [x] Make a docker-compose setup for running the app
 * [x] Add bot code to the repo
 * [x] README instructions
-* [ ] bug: hovering on a node can glitch out the graph. tooltip issue?
+* [x] bug: hovering on a node can glitch out the graph. tooltip issue?
+* [x] Make an option to view a flame graph with combined totals for a given tick
 * [ ] Make an option to view a flame graph averaged out over the whole history
 * [ ] Expanded controls section
 * [ ] The backend could make a request to screeps to dump the profiling history

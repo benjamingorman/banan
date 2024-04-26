@@ -24,5 +24,7 @@ async def get_history(server_name: str, response: Response):
         return {"error": str(e)}
 
     data = [node for node in history.get("data", []) if node]
+    with open("dump.json", "w") as fh:
+        fh.write(json.dumps(data))
     print("data", json.dumps(data)[:100], "...")
     return {"history": sorted(data, key=lambda node: node["key"])}

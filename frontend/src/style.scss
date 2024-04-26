@@ -85,7 +85,7 @@ body {
     }
   }
 
-  .chart {
+  #chart {
     overflow-x: auto;
     flex: 1;
     height: 80vh;
@@ -115,6 +115,10 @@ body {
 
   #controls-container {
     padding: 20px;
+
+    & > div {
+      margin-bottom: 5px;
+    }
   }
 }
 
