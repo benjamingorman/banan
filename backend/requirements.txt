@@ -3,3 +3,5 @@ pydantic-yaml==1.3.0
 screepsapi==0.5.1
 fastapi==0.110.2
 uvicorn==0.29
+protobuf==5.26.1
+betterproto==1.2.5

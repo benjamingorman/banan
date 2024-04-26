@@ -8,6 +8,7 @@ TODO
 * [x] bug: hovering on a node can glitch out the graph. tooltip issue?
 * [x] Make an option to view a flame graph with combined totals for a given tick
 * [x] Compress the dumps in Screeps memory
+* [ ] Add option to output pprof format (for upload to Pyroscope for example)
 * [ ] Make an option to view a flame graph averaged out over the whole history
 * [ ] Expanded controls section
 * [ ] The backend could make a request to screeps to dump the profiling history

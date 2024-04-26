@@ -43,6 +43,13 @@ class ProfilingNode(pydantic.BaseModel):
     children: List["ProfilingNode"]
     marks: Optional[List[ProfilingMark]] = None
 
+    def self_cost(self) -> float:
+        """Return the cpu cost of this node minus the cost of the children."""
+        total = self.cpu
+        for child in self.children:
+            total -= child.cpu
+        return total
+
 
 def decompress_history(comp: CompressedProfilingHistory) -> List[ProfilingNode]:
     """Decompress a dump of profiling history."""
