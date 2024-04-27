@@ -1,5 +1,8 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
+import pydantic
+
+from src.config import DEBUG_ENABLED
 from src.fetch_history import ProfilingNode
 from src.protogen.orig import pprof_pb2
 from src.protogen.perftools.profiles import (
@@ -15,6 +18,60 @@ from src.protogen.perftools.profiles import (
 
 def ms_to_ns(ms: float) -> int:
     return int(ms * 1e6)
+
+
+class TimelineStackTrace(pydantic.BaseModel):
+    start_ms: float
+    location_stack: List[str]
+
+
+class TimelineConverter:
+    """Convert from banan call tree to list of stack traces.
+
+    The profiling format that banan produces is a deterministic call tree.
+    This is not really what pprof expects, since it expects samples from
+    statistical profiling with a fixed period between them.
+
+    Before converting to pprof format we must first convert our call tree
+    to a list of stack traces with a fixed period.
+
+    As an example:
+
+          A
+         ↙ ↘
+        B   C
+
+    This call tree needs to instead be represented as a set of stack frames,
+    depending on how long was spent in each node:
+
+        A A A B A A C C C
+    """
+
+    PERIOD_BETWEEN_TRACES_MS = 0.1
+
+    def convert(self, root: ProfilingNode) -> List[TimelineStackTrace]:
+        """Convert from tree structure to a list of stack traces."""
+        print("Converting to timeline format...")
+
+        traces = []
+
+        # Loop through every possible stack frame
+        frame_time = 0
+        end = root.get_end_time()
+        while frame_time < end:
+            (frame_node, loc_stack) = root.search_by_time(frame_time, [])
+            if not frame_node:
+                raise ValueError(f"No frame at {frame_time}")
+
+            frame_time += self.PERIOD_BETWEEN_TRACES_MS
+            traces.append(
+                TimelineStackTrace(
+                    start_ms=frame_time, location_stack=list(reversed(loc_stack))
+                )
+            )
+            # print(frame_time, frame_node.key)
+
+        return traces
 
 
 class PprofConverter:
@@ -41,7 +98,19 @@ class PprofConverter:
         patched_profile.ParseFromString(serialized_profile)
         patched_profile.string_table.insert(0, "")
 
-        return patched_profile.SerializeToString()
+        serialized_patched = patched_profile.SerializeToString()
+
+        if DEBUG_ENABLED:
+            with open("debug/profile.prof", "wb") as fh:
+                fh.write(serialized_patched)
+
+            profile2 = Profile()
+            profile2.parse(serialized_patched)
+
+            with open("debug/profile.prof.json", "w") as fh:
+                fh.write(profile2.to_json(indent=2))
+
+        return serialized_patched
 
     def convert_to_pprof_format(self, node: ProfilingNode) -> Profile:
         """Convert a from banan format to a pprof format Profile object.
@@ -58,7 +127,7 @@ class PprofConverter:
         if node.timestamp:
             self.profile.time_nanos = ms_to_ns(node.timestamp)
         self.profile.duration_nanos = cpu_in_ns
-        # self.profile.period = 10000000
+        self.profile.period = ms_to_ns(TimelineConverter.PERIOD_BETWEEN_TRACES_MS)
 
         unit_name = "nanoseconds"
         self.profile.period_type = ValueType(
@@ -66,12 +135,12 @@ class PprofConverter:
             unit=self._get_string_map_id(unit_name),
         )
 
-        self.profile.sample_type.append(
-            ValueType(
-                type=self._get_string_map_id("cpu"),
-                unit=self._get_string_map_id(unit_name),
-            )
-        )
+        # self.profile.sample_type.append(
+        #     ValueType(
+        #         type=self._get_string_map_id("cpu"),
+        #         unit=self._get_string_map_id(unit_name),
+        #     )
+        # )
 
         self.profile.sample_type.append(
             ValueType(
@@ -80,16 +149,43 @@ class PprofConverter:
             )
         )
 
-        self.profile.default_sample_type = self._get_string_map_id("cpu")
+        self.profile.default_sample_type = self._get_string_map_id("samples")
 
         self.profile.mapping = []
-        self._recurse_add_node(node)
 
+        stack_frames = TimelineConverter().convert(node)
+        print("Converting from timeline to pprof format...")
+
+        for frame in stack_frames:
+            location_id_stack = []
+
+            for key in frame.location_stack:
+                location_id_stack.append(self._get_location_id(key))
+                if key not in self.location_map:
+                    self._get_location(key)
+                    self._get_function(key)
+
+            sample = Sample(location_id=location_id_stack, value=[1])
+            self.profile.sample.append(sample)
+
+        self._check_validity()
+
+        print("Done")
+        return self.profile
+
+    def _check_validity(self):
+        """Check for validity."""
         for key, lid in self.location_id_map.items():
-            assert self.location_map[lid]
-            assert self.function_map[lid]
-            assert self.profile.location[lid - 1]
-            assert self.profile.function[lid - 1]
+            if not self.location_map.get(lid):
+                raise RuntimeError(
+                    f"{key}, {lid} missing from location_map {self.location_map}"
+                )
+            if not self.function_map.get(lid):
+                raise RuntimeError(
+                    f"{key}, {lid} missing from function_map {self.function_map}"
+                )
+            assert self.profile.location[lid - 1], key
+            assert self.profile.function[lid - 1], key
 
         for key, sid in self.string_map.items():
             assert (

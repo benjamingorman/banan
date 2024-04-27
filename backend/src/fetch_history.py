@@ -64,6 +64,35 @@ class ProfilingNode(pydantic.BaseModel):
             total -= child.cpu
         return total
 
+    def get_end_time(self) -> float:
+        return self.start + self.cpu
+
+    def search_by_time(
+        self, search_time: float, call_stack: List[str]
+    ) -> Tuple[Optional["ProfilingNode"], List[str]]:
+        """Search for the deepest child node which was running at the given time.
+
+        Return the found node (if any) as well as the frame stack.
+        """
+        call_stack.append(self.key)
+
+        if search_time < self.start or search_time > self.get_end_time():
+            return None, call_stack
+
+        # It's a leaf node so it must be this
+        if not self.children:
+            return self, call_stack
+
+        for child in self.children:
+            (target, _) = child.search_by_time(search_time, call_stack)
+            if target:
+                return target, call_stack
+            else:
+                call_stack.pop()
+
+        # No children matched so it must be this
+        return self, call_stack
+
 
 def decompress_history(comp: CompressedProfilingHistory) -> List[ProfilingNode]:
     """Decompress a dump of profiling history."""

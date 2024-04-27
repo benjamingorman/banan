@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from pydantic_yaml import parse_yaml_raw_as
 
 DEBUG_ENABLED = os.getenv("DEBUG")
+DEBUG_ENABLED = True
 DEBUG_DIR = "debug"
 PYROSCOPE_URL = os.getenv("PYROSCOPE_URL", "http://pyroscope:4040")
 CONFIG_FILE_NAME = "secrets.yml"

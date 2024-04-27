@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 
 from src.config import DEBUG_DIR, DEBUG_ENABLED, PYROSCOPE_URL, load_config
 from src.fetch_history import ProfilingNode, fetch_history
-from src.pprof_convert import PprofConverter
+from src.pprof_convert import PprofConverter, ms_to_ns
 
 
 if DEBUG_ENABLED:
@@ -51,7 +51,7 @@ def init_schedules():
     """Setup a schedule to periodically push to Pyroscope."""
     logger.info("Initializing schedules")
     scheduler = BackgroundScheduler()
-    scheduler.add_job(scrape_all_and_push_to_pyroscope, "cron", second="*/5")
+    scheduler.add_job(scrape_all_and_push_to_pyroscope, "cron", second="*/30")
     scheduler.start()
 
 
@@ -80,7 +80,7 @@ def scrape_all_and_push_to_pyroscope():
                 pyroscope_sent_ticks.add(tick_str)
             except Exception:
                 logger.exception(
-                    "Error pushing tick to Pyroscope for: {server_cfg.name}"
+                    f"Error pushing tick to Pyroscope for: {server_cfg.name}"
                 )
 
 
@@ -95,13 +95,13 @@ def push_single_tick_to_pyroscope(server_name: str, tick: ProfilingNode):
         with open(f"{DEBUG_DIR}/{server_name}.prof", "wb") as fh:
             fh.write(pprof_bytes)
 
-    unix_t_now = round(time.time() * 1000)
-    tick_duration_ms = tick.cpu
+    if not tick.timestamp:
+        raise ValueError("Expecting to find a timestamp on tick")
 
     # TODO actual timestamp from dump
     app_name = f"screeps-{server_name}"
-    from_time = int(unix_t_now - math.ceil(tick_duration_ms))
-    until_time = unix_t_now
+    from_time = ms_to_ns(tick.timestamp)
+    until_time = ms_to_ns(tick.timestamp) + ms_to_ns(tick.cpu)
 
     url_params = {
         "name": app_name,
@@ -116,7 +116,7 @@ def push_single_tick_to_pyroscope(server_name: str, tick: ProfilingNode):
     logger.info("Successfully sent {}:{} to Pyroscope".format(app_name, tick.key))
     logger.info(
         "tick_duration_ms: {}, from: {}, until: {}".format(
-            tick_duration_ms, from_time, until_time
+            tick.cpu, from_time, until_time
         )
     )
 
@@ -162,9 +162,4 @@ def get_screeps_profile_pprof_bytes(server_name: str) -> bytes:
     history = fetch_history(config, server_name)
     example_node = history[0]
     pprof_bytes = PprofConverter().convert_to_pprof_bytes(example_node)
-
-    if DEBUG_ENABLED:
-        with open(f"{DEBUG_DIR}/{server_name}.prof", "wb") as fh:
-            fh.write(pprof_bytes)
-
     return pprof_bytes
