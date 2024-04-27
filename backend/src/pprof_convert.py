@@ -1,16 +1,16 @@
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 from src.fetch_history import ProfilingNode
+from src.protogen.orig import pprof_pb2
 from src.protogen.perftools.profiles import (
-    Location,
     Function,
+    Line,
+    Location,
+    Mapping,
     Profile,
     Sample,
     ValueType,
-    Mapping,
-    Line,
 )
-from src.protogen.orig import pprof_pb2
 
 
 def ms_to_ns(ms: float) -> int:
@@ -52,12 +52,13 @@ class PprofConverter:
         cpu_in_ns = ms_to_ns(node.cpu)
         start_in_ns = ms_to_ns(node.start)
 
+        # TODO: seems like a bug in python-betterproto - this doesn't get serialized
         self.profile.string_table.append("")  # empty string must be first entry
 
-        # self.profile.time_nanos = start_in_ns
-        self.profile.time_nanos = 1
+        if node.timestamp:
+            self.profile.time_nanos = ms_to_ns(node.timestamp)
         self.profile.duration_nanos = cpu_in_ns
-        self.profile.period = 10000000
+        # self.profile.period = 10000000
 
         unit_name = "nanoseconds"
         self.profile.period_type = ValueType(
@@ -78,6 +79,8 @@ class PprofConverter:
                 unit=self._get_string_map_id("count"),
             )
         )
+
+        self.profile.default_sample_type = self._get_string_map_id("cpu")
 
         self.profile.mapping = []
         self._recurse_add_node(node)

@@ -1,7 +1,7 @@
 """Configuration file parsing and validation."""
 
 import os
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel
 from pydantic_yaml import parse_yaml_raw_as

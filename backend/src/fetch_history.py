@@ -1,12 +1,12 @@
-from gzip import decompress
 import json
-import os
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
-import screepsapi
 import pydantic
+import screepsapi
 
-from src.config import AppConfig, load_config, DEBUG_ENABLED, DEBUG_DIR
+from src.config import DEBUG_DIR, DEBUG_ENABLED, AppConfig, load_config
+
+EXPECTED_BANAN_FORMAT_VERSION = 2
 
 
 class KeyMap(pydantic.BaseModel):
@@ -22,12 +22,17 @@ class ProfilingMark(pydantic.BaseModel):
     shortName: str
     fullName: str
     timestamp: float
+    """Timestamp of the dump in CPU time since start of tick."""
 
 
 class CompressedProfilingDump(pydantic.BaseModel):
     """See equivalent TypeScript definition."""
 
+    t: int
+    """Timestamp of the dump in unix milliseconds."""
+
     m: List[ProfilingMark]
+    """List of interesting events marked by Screeps code."""
 
     d: Tuple[int, float, float, int, Tuple]
     """Order is: keyMap id of key, start, cpu, intents, children"""
@@ -50,6 +55,7 @@ class ProfilingNode(pydantic.BaseModel):
     intents: int
     children: List["ProfilingNode"]
     marks: Optional[List[ProfilingMark]] = None
+    timestamp: Optional[int] = None
 
     def self_cost(self) -> float:
         """Return the cpu cost of this node minus the cost of the children."""
@@ -61,6 +67,10 @@ class ProfilingNode(pydantic.BaseModel):
 
 def decompress_history(comp: CompressedProfilingHistory) -> List[ProfilingNode]:
     """Decompress a dump of profiling history."""
+    if comp.version != EXPECTED_BANAN_FORMAT_VERSION:
+        raise ValueError(
+            f"Expected banan format version {EXPECTED_BANAN_FORMAT_VERSION} but got {comp.version}"
+        )
     return [decompress_dump(comp.keyMap, dump) for dump in comp.ticks]
 
 
@@ -70,6 +80,7 @@ def decompress_dump(keyMap: KeyMap, dump: CompressedProfilingDump) -> ProfilingN
     inverted_key_map = {v: k for k, v in keyMap.map.items()}
     decomp = decompress_node(inverted_key_map, dump.d)
     decomp.marks = dump.m
+    decomp.timestamp = dump.t
     return decomp
 
 

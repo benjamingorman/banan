@@ -1,3 +1,9 @@
 [tool.pyright]
 venv = ".venv"
 venvPath = "."
+
+[tool.ruff.lint]
+extend-select=["I"]  # get isort like behaviour
+
+[tool.ruff.lint.isort]
+case-sensitive=true

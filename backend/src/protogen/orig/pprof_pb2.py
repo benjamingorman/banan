@@ -3,6 +3,7 @@
 # source: pprof.proto
 # Protobuf Python Version: 5.26.1
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import symbol_database as _symbol_database
@@ -22,9 +23,9 @@ _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "pprof_pb2", _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
     _globals["DESCRIPTOR"]._loaded_options = None
-    _globals["DESCRIPTOR"]._serialized_options = (
-        b"\n\035com.google.perftools.profilesB\014ProfileProto"
-    )
+    _globals[
+        "DESCRIPTOR"
+    ]._serialized_options = b"\n\035com.google.perftools.profilesB\014ProfileProto"
     _globals["_PROFILE"]._serialized_start = 36
     _globals["_PROFILE"]._serialized_end = 505
     _globals["_VALUETYPE"]._serialized_start = 507

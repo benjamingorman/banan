@@ -1,20 +1,21 @@
-import json
 import io
-from typing import List, Set
-import os
-import time
-import sys
-from contextlib import asynccontextmanager
+import json
 import logging
+import math
+import os
+import sys
+import time
+from contextlib import asynccontextmanager
+from typing import List, Set
 
 import pydantic
 import requests
-from fastapi import FastAPI, Response, HTTPException
-from fastapi.responses import StreamingResponse
 from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import StreamingResponse
 
-from src.config import load_config, DEBUG_ENABLED, DEBUG_DIR, PYROSCOPE_URL
-from src.fetch_history import fetch_history, ProfilingNode
+from src.config import DEBUG_DIR, DEBUG_ENABLED, PYROSCOPE_URL, load_config
+from src.fetch_history import ProfilingNode, fetch_history
 from src.pprof_convert import PprofConverter
 
 
@@ -99,17 +100,25 @@ def push_single_tick_to_pyroscope(server_name: str, tick: ProfilingNode):
 
     # TODO actual timestamp from dump
     app_name = f"screeps-{server_name}"
+    from_time = int(unix_t_now - math.ceil(tick_duration_ms))
+    until_time = unix_t_now
+
     url_params = {
         "name": app_name,
         "format": "pprof",
-        "from": unix_t_now - tick_duration_ms,
-        "until": unix_t_now,
+        "from": from_time,
+        "until": until_time,
     }
 
     resp = requests.post(PYROSCOPE_URL + "/ingest", params=url_params, data=pprof_bytes)
     resp.raise_for_status()
 
     logger.info("Successfully sent {}:{} to Pyroscope".format(app_name, tick.key))
+    logger.info(
+        "tick_duration_ms: {}, from: {}, until: {}".format(
+            tick_duration_ms, from_time, until_time
+        )
+    )
 
 
 @app.get("/api/history/{server_name}")

@@ -1,6 +1,6 @@
 /** Whether to enable Banan or not. Turn off when not profiling. */
 export const BANAN_ENABLED = true;
-const BANAN_DUMP_FORMAT_VERSION = 1;
+const BANAN_DUMP_FORMAT_VERSION = 2;
 
 /** Options for configuring the profiler. */
 export interface BananOpts {
@@ -13,10 +13,15 @@ export interface BananOpts {
  * Order is: keyMap id of key, start, cpu, intents, children
  */
 type CompressedProfilingNode = [
+  /** key */
   number,
+  /** start */
   number,
+  /** cpu */
   number,
+  /** intents */
   number,
+  /** children */
   CompressedProfilingNode[],
 ];
 
@@ -25,7 +30,13 @@ type CompressedProfilingNode = [
  * We compress it so as to use less space in memory.
  */
 export interface CompressedProfilingDump {
+  /** Unix timestamp in milliseconds */
+  t: number;
+
+  /** Any marks that have been applied. */
   m: ProfilingMark[];
+
+  /** The root node */
   d: CompressedProfilingNode;
 }
 
@@ -33,7 +44,14 @@ export interface CompressedProfilingDump {
  * A map between node keys and their integer IDs.
  */
 interface KeyMap {
-  maxID: number; // store the maximum ID to avoid having to find it on the fly
+  /** Store the maximum ID to avoid having to find it on the fly */
+  maxID: number;
+
+  /**
+   * Map of key names to integer IDs
+   * This helps with compression by avoiding repeating the whole string
+   * of the key multiple times. Instead we just put the ID.
+   */
   map: { [key: string]: number };
 }
 
@@ -397,6 +415,7 @@ const convertToCompressedDump = (
 ): CompressedProfilingDump => {
   const marks = node.marks ?? [];
   const result: CompressedProfilingDump = {
+    t: new Date().getTime(),
     m: marks,
     d: compressNode(keyMap, node),
   };
