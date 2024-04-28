@@ -135,12 +135,12 @@ class PprofConverter:
             unit=self._get_string_map_id(unit_name),
         )
 
-        # self.profile.sample_type.append(
-        #     ValueType(
-        #         type=self._get_string_map_id("cpu"),
-        #         unit=self._get_string_map_id(unit_name),
-        #     )
-        # )
+        self.profile.sample_type.append(
+            ValueType(
+                type=self._get_string_map_id("cpu"),
+                unit=self._get_string_map_id(unit_name),
+            )
+        )
 
         self.profile.sample_type.append(
             ValueType(
@@ -165,7 +165,8 @@ class PprofConverter:
                     self._get_location(key)
                     self._get_function(key)
 
-            sample = Sample(location_id=location_id_stack, value=[1])
+            cpu_val = ms_to_ns(TimelineConverter.PERIOD_BETWEEN_TRACES_MS)
+            sample = Sample(location_id=location_id_stack, value=[cpu_val, 1])
             self.profile.sample.append(sample)
 
         self._check_validity()
