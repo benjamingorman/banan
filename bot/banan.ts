@@ -1,5 +1,7 @@
 /** Whether to enable Banan or not. Turn off when not profiling. */
-export const BANAN_ENABLED = true;
+export const BANAN_CONFIG = {
+  enabled: false,
+};
 const BANAN_DUMP_FORMAT_VERSION = 2;
 
 /** Options for configuring the profiler. */
@@ -137,7 +139,7 @@ export class Banan {
    * Initialize the profiler with supplied options.
    */
   public init(opts?: BananOpts): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     this.history.ticks = new Array(opts?.maxHistory || 30);
     this.history.ticks.fill(null);
     Object.seal(this.history.ticks);
@@ -151,7 +153,7 @@ export class Banan {
    * Should be called at the start of each tick.
    */
   public startTick(): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     this.tick = Game.time;
     this.stack = [];
     this.marks = [];
@@ -167,10 +169,11 @@ export class Banan {
    * Should be called at the end of each tick.
    */
   public endTick(): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     this.tick = undefined;
     this.tickRootNode!.cpu = Game.cpu.getUsed();
     this.tickRootNode!.marks = this.marks;
+    console.log("BANAN writing tick to history", this.getHistoryPtr());
     this.history.ticks[this.getHistoryPtr()] = convertToCompressedDump(
       this.history.keyMap,
       this.tickRootNode!,
@@ -186,7 +189,7 @@ export class Banan {
    * in the bot that we want to highlight on the flame graph.
    */
   public addMark(fullName: string, shortName?: string): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     if (!this.isRecording()) return;
     this.marks.push({
       fullName,
@@ -199,7 +202,7 @@ export class Banan {
    * Record an intent.
    */
   public addIntent(): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     if (!this.isRecording()) return;
     console.log("Got intent");
 
@@ -213,7 +216,7 @@ export class Banan {
    * Return the profiling node from the current tick.
    */
   public getCurrentTickDump(): CompressedProfilingDump | null {
-    if (!BANAN_ENABLED) return null;
+    if (!BANAN_CONFIG.enabled) return null;
     return this.history.ticks[this.getHistoryPtr(Game.time)];
   }
 
@@ -221,7 +224,7 @@ export class Banan {
    * Return the profiling node from the previous tick.
    */
   public getPrevTickDump(): CompressedProfilingDump | null {
-    if (!BANAN_ENABLED) return null;
+    if (!BANAN_CONFIG.enabled) return null;
     return this.history.ticks[this.getHistoryPtr(Game.time - 1)];
   }
 
@@ -229,7 +232,7 @@ export class Banan {
    * Return the CPU used in the current tick.
    */
   public getPrevTickCpuUsed(): number | undefined {
-    if (!BANAN_ENABLED) return undefined;
+    if (!BANAN_CONFIG.enabled) return undefined;
     return this.getPrevTickDump()?.d[2];
   }
 
@@ -237,7 +240,7 @@ export class Banan {
    * Log information about the current tick to the console.
    */
   public logInfo(): void {
-    if (!BANAN_ENABLED) return;
+    if (!BANAN_CONFIG.enabled) return;
     const currentDump = this.getCurrentTickDump();
     if (currentDump) {
       console.log("🍌 Current tick CPU usage:", currentDump.d[2]);
@@ -250,7 +253,7 @@ export class Banan {
    * Return the average CPU used over the last N ticks.
    */
   public getAverageCpuUsed(): number {
-    if (!BANAN_ENABLED) return 0;
+    if (!BANAN_CONFIG.enabled) return 0;
     let count = 0;
     const total = this.history.ticks.reduce((acc, dump) => {
       if (dump) {
@@ -273,6 +276,7 @@ export class Banan {
    * Get a pointer to the history array for the given tick.
    */
   private getHistoryPtr(targetTick?: number): number {
+    if (!this.history.ticks.length) throw new Error("Banan was never init");
     return (targetTick ?? Game.time) % this.history.ticks.length;
   }
 
@@ -458,6 +462,6 @@ export function profile(
   key?: string | symbol,
   _descriptor?: TypedPropertyDescriptor<any>,
 ): void {
-  if (!BANAN_ENABLED) return;
+  if (!BANAN_CONFIG.enabled) return;
   Banan.instance.profile(target, key, _descriptor);
 }

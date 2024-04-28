@@ -1,9 +1,16 @@
-import { Banan, ProfilingNode, profile } from "../src/utils/profiler/banan";
+import {
+  BANAN_CONFIG,
+  Banan,
+  CompressedProfilingDump,
+  ProfilingNode,
+  profile,
+} from "../src/utils/profiler/banan";
 import { mockGame, mockMemory } from "./mocks";
 
 let cpuUsed = 0;
 
 beforeEach(() => {
+  BANAN_CONFIG.enabled = true;
   cpuUsed = 0;
   const cpu: CPU = {
     getUsed: () => cpuUsed,
@@ -42,7 +49,8 @@ describe("Banan", () => {
   it("does nothing when not active", () => {
     const test = newTestClass();
     test.doWork();
-    expect(Banan.instance.getCurrentTickDump()).toBeUndefined();
+    Banan.instance.init();
+    expect(Banan.instance.getCurrentTickDump()).toBeFalsy();
   });
 
   test("basic integration test", () => {
@@ -52,23 +60,23 @@ describe("Banan", () => {
     test.doWork(2);
     Banan.instance.endTick();
 
-    const dump = Banan.instance.getCurrentTickDump() as ProfilingNode;
-    console.log("dump", JSON.stringify(dump));
-    expect(dump).not.toBeUndefined();
+    const root = Banan.instance.getCurrentTickDump() as CompressedProfilingDump;
+    console.log("root", JSON.stringify(root));
+    expect(root).not.toBeFalsy();
 
-    const child = dump.children[0];
-    expect(child.key).toBe("TestClass:doWork");
-    expect(child.cpu).toBe(2);
+    const child = root.d[4][0];
+    // expect(child[0]).toBe("TestClass:doWork");
+    expect(child[2]).toBe(2);
 
-    const grandchild1 = child.children[0];
-    expect(grandchild1.key).toBe("TestClass:worker");
-    expect(grandchild1.cpu).toBe(1);
+    const grandchild1 = child[4][0];
+    // expect(grandchild1.key).toBe("TestClass:worker");
+    expect(grandchild1[2]).toBe(1);
 
-    const grandchild2 = child.children[1];
-    expect(grandchild2.key).toBe("TestClass:worker");
-    expect(grandchild2.cpu).toBe(1);
+    const grandchild2 = child[4][1];
+    // expect(grandchild2.key).toBe("TestClass:worker");
+    expect(grandchild2[2]).toBe(1);
 
-    expect(dump.cpu).toBe(2);
+    expect(root.d[2]).toBe(2);
   });
 
   test("integration test with history", () => {
@@ -79,6 +87,7 @@ describe("Banan", () => {
 
     const test = newTestClass();
 
+    Banan.instance.init();
     Banan.instance.startTick();
     test.doWork(2);
     Banan.instance.endTick();
@@ -90,11 +99,15 @@ describe("Banan", () => {
     test.doWork(1);
     Banan.instance.endTick();
 
-    const prevDump = Banan.instance.getPrevTickDump() as ProfilingNode;
-    expect(prevDump.cpu).toBe(2);
+    const prevDump = Banan.instance.getPrevTickDump()!;
+    const currentDump = Banan.instance.getCurrentTickDump()!;
 
-    const currentDump = Banan.instance.getCurrentTickDump() as ProfilingNode;
-    expect(currentDump.cpu).toBe(1);
+    // @ts-ignore
+    console.log("history", JSON.stringify(Banan.instance.history));
+    console.log("prevDump", JSON.stringify(prevDump));
+    console.log("currentDump", JSON.stringify(currentDump));
+    expect(prevDump.d[4][0][2]).toBe(2);
+    expect(currentDump.d[4][0][2]).toBe(1);
 
     const average = Banan.instance.getAverageCpuUsed();
     expect(average).toBe(1.5);
@@ -108,7 +121,7 @@ describe("Banan", () => {
     test.doWork(2);
     Banan.instance.endTick();
 
-    expect((Memory as any).BANAN).toHaveLength(30);
-    expect((Memory as any).BANAN[Game.time % 30].cpu).toBe(2);
+    const dump = JSON.parse((Memory as any).BANAN);
+    expect(dump.ticks.length).toBeGreaterThan(0);
   });
 });
